@@ -711,7 +711,7 @@ p.dropcap::first-letter {
 
 .modal-lesson {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid var(--rule-soft);
@@ -2193,4 +2193,282 @@ body[data-palette-open] {
   .search-toggle {
     flex-shrink: 0;
   }
+}
+
+.modal-lesson-hide {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-soft, var(--ink));
+  opacity: 0.35;
+  width: 30px;
+  height: 30px;
+  margin-right: 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity var(--motion-feedback) ease, background-color var(--motion-feedback) ease,
+    color var(--motion-feedback) ease, border-color var(--motion-feedback) ease;
+}
+
+.modal-lesson:hover .modal-lesson-hide {
+  opacity: 0.75;
+}
+
+.modal-lesson-hide:hover,
+.modal-lesson-hide:focus-visible {
+  opacity: 1;
+  color: var(--danger, #b42318);
+  border-color: var(--danger, #b42318);
+  background: transparent;
+}
+
+.modal-hidden-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px 16px;
+  border-top: 1px dashed var(--rule-soft);
+  margin-top: 6px;
+}
+
+.modal-hidden-label {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-soft, var(--ink));
+  opacity: 0.7;
+  margin-right: 4px;
+}
+
+.modal-hidden-restore {
+  appearance: none;
+  border: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color var(--motion-feedback) ease, background-color var(--motion-feedback) ease;
+}
+
+.modal-hidden-restore:hover,
+.modal-hidden-restore:focus-visible {
+  border-color: var(--accent, var(--ink));
+  background: var(--blueprint-tint);
+}
+
+/* --- Personal fork: phase-level delete (see hidden-lessons.js) --- */
+
+.toc-hide {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-soft, var(--ink));
+  opacity: 0;
+  width: 28px;
+  height: 28px;
+  align-self: center;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity var(--motion-feedback) ease, color var(--motion-feedback) ease,
+    border-color var(--motion-feedback) ease;
+}
+
+.toc-row:hover .toc-hide,
+.toc-row:focus-within .toc-hide {
+  opacity: 0.55;
+}
+
+.toc-hide:hover,
+.toc-hide:focus-visible {
+  opacity: 1;
+  color: var(--danger, #b42318);
+  border-color: var(--danger, #b42318);
+}
+
+.toc-hidden-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0 4px;
+  border-top: 1px dashed var(--rule-soft);
+  margin-top: 10px;
+}
+
+.toc-hidden-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  margin-right: 4px;
+}
+
+.toc-hidden-restore {
+  appearance: none;
+  border: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color var(--motion-feedback) ease, background-color var(--motion-feedback) ease;
+}
+
+.toc-hidden-restore:hover,
+.toc-hidden-restore:focus-visible {
+  border-color: var(--accent, var(--ink));
+  background: var(--blueprint-tint);
+}
+
+.modal-delete-phase {
+  appearance: none;
+  border: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink-mute);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  padding: 6px 14px;
+  border-radius: 6px;
+  margin-left: auto;
+  margin-right: 8px;
+  cursor: pointer;
+  transition: color var(--motion-feedback) ease, border-color var(--motion-feedback) ease;
+}
+
+.modal-delete-phase:hover,
+.modal-delete-phase:focus-visible {
+  color: var(--danger, #b42318);
+  border-color: var(--danger, #b42318);
+}
+
+/* --- Personal fork: phases deferred to the end of the list --- */
+
+.toc-defer {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-soft, var(--ink));
+  opacity: 0;
+  width: 28px;
+  height: 28px;
+  align-self: center;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity var(--motion-feedback) ease, color var(--motion-feedback) ease,
+    border-color var(--motion-feedback) ease;
+}
+
+.toc-row:hover .toc-defer,
+.toc-row:focus-within .toc-defer {
+  opacity: 0.55;
+}
+
+.toc-defer:hover,
+.toc-defer:focus-visible {
+  opacity: 1;
+  color: var(--blueprint, var(--ink));
+  border-color: var(--blueprint, var(--ink));
+}
+
+.toc-defer-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 0 6px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+.toc-defer-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px dashed var(--rule-soft);
+}
+
+.toc-row.is-deferred .toc-name,
+.toc-row.is-deferred .toc-num {
+  opacity: 0.62;
+}
+
+.toc-later {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  border: 1px solid var(--rule-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: 10px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* --- Personal fork: per-row phase controls (move / defer / delete) --- */
+
+.toc-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  align-self: center;
+  opacity: 0;
+  transition: opacity var(--motion-feedback) ease;
+}
+
+.toc-row:hover .toc-actions,
+.toc-row:focus-within .toc-actions {
+  opacity: 1;
+}
+
+.toc-move {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-soft, var(--ink));
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--motion-feedback) ease, border-color var(--motion-feedback) ease;
+}
+
+.toc-move:hover:not(:disabled),
+.toc-move:focus-visible:not(:disabled) {
+  color: var(--blueprint, var(--ink));
+  border-color: var(--blueprint, var(--ink));
+}
+
+.toc-move:disabled {
+  opacity: 0.22;
+  cursor: default;
+}
+
+/* The group-level controls sit inside .toc-actions now, so they no longer
+   fade themselves in and out independently. */
+.toc-defer,
+.toc-hide {
+  opacity: 1;
+  width: 26px;
+  height: 26px;
+  margin: 0;
 }

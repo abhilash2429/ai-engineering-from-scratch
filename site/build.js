@@ -1117,7 +1117,7 @@ const ARTIFACTS = ${JSON.stringify(artifacts, null, 2)};
   fs.writeFileSync(OUTPUT_PATH, output, 'utf8');
   console.log(`\n✅ Generated ${OUTPUT_PATH}`);
 
-  syncCounts(totalLessons, phases.length, artifacts.length);
+  syncCounts(curatedLessonCount(totalLessons), phases.length, artifacts.length);
   syncReadme(totalLessons);
   writeSitemap(phases, glossaryTerms.length, certifications);
   writeLlms(phases, glossaryTerms.length, artifacts.length, certifications);
@@ -1247,6 +1247,37 @@ function syncReadme(lessons) {
   if (md !== before) {
     fs.writeFileSync(readmePath, md, 'utf8');
     console.log('   synced README stats + lessons badge');
+  }
+}
+
+// ─── Curated lesson count (personal fork) ─────────────────────────────────
+// hidden-seed.js is the curated set this fork actually studies. Without this,
+// syncCounts would stamp the on-disk total into the marketing copy on every
+// deploy, so the hero would advertise 503 while the live counter read 414.
+// Falls back to the full total if the seed is missing or unparseable.
+function curatedLessonCount(totalLessons) {
+  try {
+    const seedPath = path.join(__dirname, 'hidden-seed.js');
+    if (!fs.existsSync(seedPath)) return totalLessons;
+    const src = fs.readFileSync(seedPath, 'utf8');
+    const cutLessons = (src.match(/'phases\/[^']+'/g) || []).length;
+
+    // Whole phases in the seed cut every lesson under them.
+    const phasesBlock = (src.match(/phases\s*:\s*\[([\s\S]*?)\]/) || [])[1] || '';
+    const cutPhases = phasesBlock.match(/'([^']+)'/g) || [];
+    let cutFromPhases = 0;
+    for (const q of cutPhases) {
+      const dir = path.join(__dirname, '..', 'phases', q.replace(/'/g, ''));
+      if (!fs.existsSync(dir)) continue;
+      cutFromPhases += fs.readdirSync(dir)
+        .filter((d) => fs.statSync(path.join(dir, d)).isDirectory()).length;
+    }
+
+    const kept = totalLessons - cutLessons - cutFromPhases;
+    return kept > 0 && kept <= totalLessons ? kept : totalLessons;
+  } catch (err) {
+    console.warn(`⚠️  curated count skipped: ${err.message}`);
+    return totalLessons;
   }
 }
 

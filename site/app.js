@@ -42,14 +42,93 @@
     updateThemeIcon();
   }
 
+  // data.js carries no phase slug, so derive it from the first lesson URL
+  // (.../phases/<slug>/<lesson>/) — that is the key hidden-lessons.js stores.
+  function phaseSlug(p) {
+    if (!p || !p.lessons) return null;
+    for (var i = 0; i < p.lessons.length; i++) {
+      if (!p.lessons[i].url) continue;
+      var m = String(p.lessons[i].url).match(/phases\/([^/]+)/);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  function phaseIsHidden(p) {
+    if (!window.AIFSHidden) return false;
+    var slug = phaseSlug(p);
+    return !!slug && window.AIFSHidden.isPhaseHidden(slug);
+  }
+
+  function phaseIsDeferred(p) {
+    if (!window.AIFSHidden) return false;
+    var slug = phaseSlug(p);
+    return !!slug && window.AIFSHidden.isPhaseDeferred(slug);
+  }
+
+  /**
+   * Every phase in its current logical order, hidden ones included.
+   * The stored `order` may be empty or partial, so this materialises the full
+   * sequence before any swap — otherwise nudging one phase up would yank it
+   * past every phase the partial order never named.
+   */
+  function materialisedOrder() {
+    var idx = [];
+    for (var i = 0; i < PHASES.length; i++) idx.push(i);
+    idx.sort(function (a, b) {
+      var ra = window.AIFSHidden.orderRank(phaseSlug(PHASES[a]) || '');
+      var rb = window.AIFSHidden.orderRank(phaseSlug(PHASES[b]) || '');
+      return ra === rb ? a - b : ra - rb;
+    });
+    var slugs = [];
+    for (var j = 0; j < idx.length; j++) slugs.push(phaseSlug(PHASES[idx[j]]) || '');
+    return slugs;
+  }
+
+  function phaseBySlug(slug) {
+    for (var i = 0; i < PHASES.length; i++) {
+      if (phaseSlug(PHASES[i]) === slug) return PHASES[i];
+    }
+    return null;
+  }
+
+  /**
+   * Swap a phase with its nearest neighbour in `dir` that sits in the same
+   * group: visible, and on the same side of the deferred divider. Hidden
+   * phases keep their slot but are stepped over, and a move never smuggles a
+   * phase across the divider — that is what the defer control is for.
+   */
+  function movePhase(slug, dir) {
+    if (!window.AIFSHidden) return;
+    var slugs = materialisedOrder();
+    var from = slugs.indexOf(slug);
+    if (from === -1) return;
+
+    var self = phaseBySlug(slug);
+    var selfDeferred = phaseIsDeferred(self);
+
+    for (var k = from + dir; k >= 0 && k < slugs.length; k += dir) {
+      var other = phaseBySlug(slugs[k]);
+      if (!other || phaseIsHidden(other)) continue;
+      if (phaseIsDeferred(other) !== selfDeferred) return;
+      slugs[from] = slugs[k];
+      slugs[k] = slug;
+      window.AIFSHidden.setOrder(slugs);
+      return;
+    }
+  }
+
   function computeStats() {
     var totalLessons = 0;
     var completeLessons = 0;
     var hasProgress = !!window.AIFSProgress;
+    var hasHidden = !!window.AIFSHidden;
     for (var i = 0; i < PHASES.length; i++) {
+      if (hasHidden && phaseIsHidden(PHASES[i])) continue;
       var lessons = PHASES[i].lessons;
-      totalLessons += lessons.length;
       for (var j = 0; j < lessons.length; j++) {
+        if (hasHidden && window.AIFSHidden.isHidden(lessons[j].url)) continue;
+        totalLessons++;
         var staticDone = lessons[j].status === 'complete';
         var userDone = false;
         if (hasProgress && lessons[j].url) {
@@ -60,12 +139,15 @@
       }
     }
     var completePhases = 0;
+    var visiblePhases = 0;
     for (var p = 0; p < PHASES.length; p++) {
+      if (hasHidden && phaseIsHidden(PHASES[p])) continue;
+      visiblePhases++;
       if (PHASES[p].status === 'complete') completePhases++;
     }
     return {
       lessons: totalLessons,
-      phases: PHASES.length,
+      phases: visiblePhases,
       complete: completeLessons,
       completePhases: completePhases
     };
@@ -107,12 +189,51 @@
     var grid = document.getElementById('phasesGrid');
     if (!grid) return;
     var hasProgress = !!window.AIFSProgress;
+    var hasHidden = !!window.AIFSHidden;
     var html = '';
-    for (var i = 0; i < PHASES.length; i++) {
+    var hiddenRows = [];
+
+    // Deferred phases stay fully visible and countable; they just sort to the
+    // bottom so the next thing to study is always the top of the list.
+    var order = [];
+    var deferredOrder = [];
+    for (var s = 0; s < PHASES.length; s++) {
+      if (hasHidden && phaseIsHidden(PHASES[s])) {
+        hiddenRows.push({ name: PHASES[s].name, slug: phaseSlug(PHASES[s]), id: PHASES[s].id });
+        continue;
+      }
+      if (hasHidden && window.AIFSHidden.isPhaseDeferred(phaseSlug(PHASES[s]) || '')) {
+        deferredOrder.push(s);
+      } else {
+        order.push(s);
+      }
+    }
+
+    // An explicit study sequence overrides phase-number order. Phases the
+    // sequence does not name keep their natural position after the named ones.
+    if (hasHidden && window.AIFSHidden.getOrder().length > 0) {
+      var rank = function (idx) { return window.AIFSHidden.orderRank(phaseSlug(PHASES[idx]) || ''); };
+      var byOrder = function (a, b) {
+        var ra = rank(a);
+        var rb = rank(b);
+        return ra === rb ? a - b : ra - rb;
+      };
+      order.sort(byOrder);
+      deferredOrder.sort(byOrder);
+    }
+
+    order = order.concat(deferredOrder);
+    var firstDeferred = order.length - deferredOrder.length;
+
+    for (var o = 0; o < order.length; o++) {
+      var i = order[o];
       var p = PHASES[i];
-      var total = p.lessons.length;
+      var isDeferred = o >= firstDeferred;
+      var total = 0;
       var done = 0;
       for (var j = 0; j < p.lessons.length; j++) {
+        if (hasHidden && window.AIFSHidden.isHidden(p.lessons[j].url)) continue;
+        total++;
         var staticDone = p.lessons[j].status === 'complete';
         var userDone = false;
         if (hasProgress && p.lessons[j].url) {
@@ -124,14 +245,95 @@
       var statusClass = p.status.replace(/ /g, '-');
       var roman = toRoman(p.id);
       var num = String(p.id).padStart(2, '0');
-      html += '<div class="toc-row" data-phase="' + i + '" role="button" tabindex="0" aria-haspopup="dialog" aria-label="Open Phase ' + num + ': ' + escapeHtml(p.name) + '">';
+
+      if (o === firstDeferred && deferredOrder.length > 0) {
+        html += '<div class="toc-defer-divider"><span>Deferred to the end (' + deferredOrder.length + ')</span></div>';
+      }
+
+      html += '<div class="toc-row' + (isDeferred ? ' is-deferred' : '') + '" data-phase="' + i + '" role="button" tabindex="0" aria-haspopup="dialog" aria-label="Open Phase ' + num + ': ' + escapeHtml(p.name) + (isDeferred ? ' (deferred to the end)' : '') + '">';
       html += '<span class="toc-num">' + roman + '.</span>';
-      html += '<div><span class="toc-status ' + statusClass + '"></span><span class="toc-name">' + escapeHtml(p.name) + '</span></div>';
+      html += '<div><span class="toc-status ' + statusClass + '"></span><span class="toc-name">' + escapeHtml(p.name) + '</span>' + (isDeferred ? '<span class="toc-later">later</span>' : '') + '</div>';
       html += '<span class="toc-meta">' + done + ' / ' + total + '</span>';
       html += '<span class="toc-meta">' + num + '</span>';
+      if (hasHidden) {
+        var slugAttr = escapeHtml(phaseSlug(p) || '');
+        var nameAttr = escapeHtml(p.name);
+        // First and last of a group have nowhere to go in one direction.
+        var groupStart = isDeferred ? firstDeferred : 0;
+        var groupEnd = isDeferred ? order.length - 1 : firstDeferred - 1;
+        html += '<span class="toc-actions">';
+        html += '<button type="button" class="toc-move" data-slug="' + slugAttr + '" data-dir="-1"' + (o <= groupStart ? ' disabled' : '') + ' title="Move up" aria-label="Move up: ' + nameAttr + '">↑</button>';
+        html += '<button type="button" class="toc-move" data-slug="' + slugAttr + '" data-dir="1"' + (o >= groupEnd ? ' disabled' : '') + ' title="Move down" aria-label="Move down: ' + nameAttr + '">↓</button>';
+        html += '<button type="button" class="toc-defer" data-slug="' + slugAttr + '" data-deferred="' + (isDeferred ? '1' : '0') + '" title="' + (isDeferred ? 'Move back into the main sequence' : 'Send this phase to the end of the list') + '" aria-label="' + (isDeferred ? 'Un-defer phase: ' : 'Send phase to the end: ') + nameAttr + '">' + (isDeferred ? '⤒' : '⤓') + '</button>';
+        html += '<button type="button" class="toc-hide" data-slug="' + slugAttr + '" data-name="' + nameAttr + '" title="Remove this phase from the course view" aria-label="Delete phase: ' + nameAttr + '">✕</button>';
+        html += '</span>';
+      } else {
+        html += '<span></span>';
+      }
       html += '</div>';
     }
+
+    if (hiddenRows.length > 0) {
+      html += '<div class="toc-hidden-section"><span class="toc-hidden-label">Deleted phases (' + hiddenRows.length + ') — click to restore:</span>';
+      for (var q = 0; q < hiddenRows.length; q++) {
+        html += '<button type="button" class="toc-hidden-restore" data-slug="' + escapeHtml(hiddenRows[q].slug || '') + '" title="Restore this phase">' + String(hiddenRows[q].id).padStart(2, '0') + ' · ' + escapeHtml(hiddenRows[q].name) + '</button>';
+      }
+      html += '</div>';
+    }
+
     grid.innerHTML = html;
+
+    var phaseHideBtns = grid.querySelectorAll('.toc-hide');
+    for (var hb = 0; hb < phaseHideBtns.length; hb++) {
+      phaseHideBtns[hb].addEventListener('click', function (e) {
+        // The whole row is a button that opens the modal; stop it here.
+        e.preventDefault();
+        e.stopPropagation();
+        var slug = this.getAttribute('data-slug');
+        if (!slug || !window.AIFSHidden) return;
+        if (window.confirm('Delete the whole "' + this.getAttribute('data-name') + '" phase from the course view?\n\nEvery lesson in it drops out of the counts. You can restore it from the "Deleted phases" strip at the bottom of this list.')) {
+          window.AIFSHidden.hidePhase(slug);
+        }
+      });
+    }
+
+    var moveBtns = grid.querySelectorAll('.toc-move');
+    for (var mb = 0; mb < moveBtns.length; mb++) {
+      moveBtns[mb].addEventListener('click', function (e) {
+        // The whole row is a button that opens the modal; stop it here.
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.disabled) return;
+        movePhase(this.getAttribute('data-slug'), parseInt(this.getAttribute('data-dir'), 10));
+      });
+    }
+
+    var deferBtns = grid.querySelectorAll('.toc-defer');
+    for (var db = 0; db < deferBtns.length; db++) {
+      deferBtns[db].addEventListener('click', function (e) {
+        // The whole row is a button that opens the modal; stop it here.
+        e.preventDefault();
+        e.stopPropagation();
+        var slug = this.getAttribute('data-slug');
+        if (!slug || !window.AIFSHidden) return;
+        if (this.getAttribute('data-deferred') === '1') {
+          window.AIFSHidden.undeferPhase(slug);
+        } else {
+          window.AIFSHidden.deferPhase(slug);
+        }
+      });
+    }
+
+    var phaseRestoreBtns = grid.querySelectorAll('.toc-hidden-restore');
+    for (var pr = 0; pr < phaseRestoreBtns.length; pr++) {
+      phaseRestoreBtns[pr].addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var slug = this.getAttribute('data-slug');
+        if (!slug || !window.AIFSHidden) return;
+        window.AIFSHidden.restorePhase(slug);
+      });
+    }
 
     // Re-apply per-row stagger delays for the freshly created rows.
     initStaggerIndex();
@@ -222,6 +424,17 @@
       }
     });
 
+    var delPhaseBtn = document.getElementById('modalDeletePhase');
+    if (delPhaseBtn) {
+      delPhaseBtn.addEventListener('click', function () {
+        var slug = this.getAttribute('data-slug');
+        if (!slug || !window.AIFSHidden) return;
+        if (!window.confirm('Delete the whole "' + this.getAttribute('data-name') + '" phase from the course view?\n\nEvery lesson in it drops out of the counts. You can restore it from the "Deleted phases" strip at the bottom of the phase list.')) return;
+        window.AIFSHidden.hidePhase(slug);
+        closeModal(false);
+      });
+    }
+
     var resetBtn = document.getElementById('modalReset');
     if (resetBtn) {
       resetBtn.addEventListener('click', function () {
@@ -246,6 +459,18 @@
     document.getElementById('modalTitle').textContent = p.name;
     document.getElementById('modalDesc').textContent = p.desc;
 
+    var delPhase = document.getElementById('modalDeletePhase');
+    if (delPhase) {
+      var slug = phaseSlug(p);
+      if (window.AIFSHidden && slug) {
+        delPhase.style.display = '';
+        delPhase.setAttribute('data-slug', slug);
+        delPhase.setAttribute('data-name', p.name);
+      } else {
+        delPhase.style.display = 'none';
+      }
+    }
+
     renderModalLessons(p);
 
     var overlay = document.getElementById('modalOverlay');
@@ -265,13 +490,17 @@
     if (!container) return;
 
     var hasProgress = !!window.AIFSProgress;
+    var hasHidden = !!window.AIFSHidden;
     var userDone = 0;
+    var visibleLessons = 0;
     var html = '';
 
     for (var i = 0; i < p.lessons.length; i++) {
       var l = p.lessons[i];
       var pathMatch = l.url ? l.url.match(/(phases\/[^/]+\/[^/]+)\/?$/) : null;
       var lessonPath = pathMatch ? pathMatch[1] : '';
+      if (hasHidden && lessonPath && window.AIFSHidden.isHidden(lessonPath)) continue;
+      visibleLessons++;
       var userComplete = hasProgress && lessonPath && window.AIFSProgress.isLessonComplete(lessonPath);
       if (userComplete) userDone++;
 
@@ -296,7 +525,28 @@
         toggleHtml = '<button type="button" class="modal-lesson-toggle' + (userComplete ? ' done' : '') + '" data-path="' + lessonPath + '" title="' + (userComplete ? 'Mark as not done' : 'Mark complete') + '" aria-label="' + (userComplete ? 'Mark as not done' : 'Mark complete') + '"><span class="modal-lesson-check" aria-hidden="true">' + (userComplete ? '✓' : '') + '</span><span class="modal-lesson-toggle-label">' + (userComplete ? 'Done' : 'Mark done') + '</span></button>';
       }
       html += toggleHtml;
+      var hideBtn = '';
+      if (window.AIFSHidden) {
+        hideBtn = '<button type="button" class="modal-lesson-hide" data-path="' + lessonPath + '" title="Remove this lesson from the course view" aria-label="Delete lesson: ' + lessonLabel + '">✕</button>';
+      }
+      html += hideBtn;
       html += '</div>';
+    }
+
+    if (window.AIFSHidden) {
+      var hiddenHere = [];
+      for (var h = 0; h < p.lessons.length; h++) {
+        var hl = p.lessons[h];
+        var hp = hl.url ? window.AIFSHidden.extractPath(hl.url) : null;
+        if (hp && window.AIFSHidden.isLessonHidden(hp)) hiddenHere.push({ name: hl.name, path: hp });
+      }
+      if (hiddenHere.length > 0) {
+        html += '<div class="modal-hidden-section"><span class="modal-hidden-label">Deleted in this phase (' + hiddenHere.length + ') — click to restore:</span>';
+        for (var k = 0; k < hiddenHere.length; k++) {
+          html += '<button type="button" class="modal-hidden-restore" data-path="' + hiddenHere[k].path + '" title="Restore this lesson">' + escapeHtml(hiddenHere[k].name) + '</button>';
+        }
+        html += '</div>';
+      }
     }
 
     container.innerHTML = html;
@@ -316,14 +566,38 @@
       });
     }
 
+    var hideBtns = container.querySelectorAll('.modal-lesson-hide');
+    for (var b = 0; b < hideBtns.length; b++) {
+      hideBtns[b].addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var path = this.getAttribute('data-path');
+        if (!path || !window.AIFSHidden) return;
+        if (window.confirm('Delete "' + this.getAttribute('aria-label').replace(/^Delete lesson: /, '') + '" from the course view?\n\nYou can restore it later from the "Deleted in this phase" section.')) {
+          window.AIFSHidden.hide(path);
+        }
+      });
+    }
+
+    var restoreBtns = container.querySelectorAll('.modal-hidden-restore');
+    for (var r = 0; r < restoreBtns.length; r++) {
+      restoreBtns[r].addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var path = this.getAttribute('data-path');
+        if (!path || !window.AIFSHidden) return;
+        window.AIFSHidden.restore(path);
+      });
+    }
+
     var progEl = document.getElementById('modalProgress');
     var barEl = document.getElementById('modalProgressBar');
     var barFill = document.getElementById('modalProgressBarFill');
-    if (hasProgress && p.lessons.length > 0) {
-      var pct = Math.round((userDone / p.lessons.length) * 100);
+    if (hasProgress && visibleLessons > 0) {
+      var pct = Math.round((userDone / visibleLessons) * 100);
       if (progEl) {
         progEl.style.display = '';
-        progEl.innerHTML = '<span><strong class="modal-progress-count">' + userDone + '</strong> of ' + p.lessons.length + ' lessons complete</span><span class="modal-progress-pct">' + pct + '%</span>';
+        progEl.innerHTML = '<span><strong class="modal-progress-count">' + userDone + '</strong> of ' + visibleLessons + ' lessons complete</span><span class="modal-progress-pct">' + pct + '%</span>';
       }
       if (barEl && barFill) {
         barEl.style.display = '';
@@ -342,6 +616,16 @@
 
   if (window.AIFSProgress) {
     window.AIFSProgress.onChange(function () {
+      if (currentPhaseIdx >= 0 && PHASES[currentPhaseIdx]) {
+        renderModalLessons(PHASES[currentPhaseIdx]);
+      }
+      populateStats();
+      renderPhases();
+    });
+  }
+
+  if (window.AIFSHidden) {
+    window.AIFSHidden.onChange(function () {
       if (currentPhaseIdx >= 0 && PHASES[currentPhaseIdx]) {
         renderModalLessons(PHASES[currentPhaseIdx]);
       }
